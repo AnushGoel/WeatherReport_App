@@ -124,7 +124,7 @@ def predict_with_model(model, data, scaler, days=7, window_size=5, is_lstm=False
     if is_lstm:
         inputs = data_scaled[-window_size:].reshape(1, window_size, 1)  # Reshape for LSTM
     else:
-        inputs = data_scaled[-window_size:].reshape(1, window_size)
+        inputs = data_scaled[-window_size:].reshape(1, window_size)  # Reshape for XGBoost
 
     predictions = []
     for _ in range(days):
