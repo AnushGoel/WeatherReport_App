@@ -83,7 +83,10 @@ def create_xgboost_model(data, window_size=5):
         y.append(data_scaled[i, 0])
 
     X, y = np.array(X), np.array(y)
-    
+
+    # Reshaping X to ensure it's a 2D array for XGBoost
+    X = X.reshape(X.shape[0], X.shape[1])
+
     model = XGBRegressor(n_estimators=100, random_state=42)
     model.fit(X, y)
 
@@ -114,16 +117,20 @@ def create_lstm_model(data, window_size=5):
     return model, scaler
 
 # Predict next 'n' days using ML model
-def predict_with_model(model, data, scaler, days=7, window_size=5):
+def predict_with_model(model, data, scaler, days=7, window_size=5, is_lstm=False):
     data = np.array(data)
     data_scaled = scaler.transform(data.reshape(-1, 1))
 
-    inputs = data_scaled[-window_size:].reshape(1, window_size, 1)  # Reshape for LSTM
+    if is_lstm:
+        inputs = data_scaled[-window_size:].reshape(1, window_size, 1)  # Reshape for LSTM
+    else:
+        inputs = data_scaled[-window_size:].reshape(1, window_size)
+
     predictions = []
     for _ in range(days):
         prediction = model.predict(inputs)
         predictions.append(prediction[0][0])
-        inputs = np.append(inputs[:, 1:, :], prediction.reshape(1, 1, 1), axis=1)
+        inputs = np.append(inputs[:, 1:, :], prediction.reshape(1, 1, 1), axis=1) if is_lstm else np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)
 
     predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
     return predictions
@@ -153,8 +160,8 @@ if lat and lon:
     model_xgb, scaler_xgb = create_xgboost_model(df['temp'].values)
 
     # Predict next 'n' days for the city
-    future_preds_lstm = predict_with_model(model_lstm, df['temp'].values, scaler_lstm, days=days_to_predict)
-    future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict)
+    future_preds_lstm = predict_with_model(model_lstm, df['temp'].values, scaler_lstm, days=days_to_predict, is_lstm=True)
+    future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict, is_lstm=False)
 
     # Convert to Fahrenheit if needed
     if temp_unit == "Fahrenheit (°F)":
