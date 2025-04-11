@@ -114,74 +114,64 @@ def predict_with_lstm(model, data, scaler, days=7, window_size=5):
 st.set_page_config(page_title="Professional Weather App", layout="wide")
 st.title("🌍 Professional Weather Forecast with ML and Interactive Features")
 
-# User input: Cities, number of days to predict, temperature units
-city1 = st.text_input("Enter the first city name:", value="Toronto")
-city2 = st.text_input("Enter the second city name:", value="Vancouver")
+# User input: City, number of days to predict, temperature units
+city = st.text_input("Enter the city name:", value="Toronto")
 days_to_predict = st.slider("Select number of days to predict:", min_value=1, max_value=14, value=7)
 temp_unit = st.radio("Select temperature unit:", ("Celsius (°C)", "Fahrenheit (°F)"))
 
-# Fetch coordinates for both cities
-lat1, lon1 = get_coordinates(city1)
-lat2, lon2 = get_coordinates(city2)
+# Fetch coordinates for the city
+lat, lon = get_coordinates(city)
 
-if lat1 and lon1 and lat2 and lon2:
-    st.success(f"📍 Found locations: {city1} (Lat: {lat1}, Lon: {lon1}), {city2} (Lat: {lat2}, Lon: {lon2})")
+if lat and lon:
+    st.success(f"📍 Found location: {city} (Lat: {lat}, Lon: {lon})")
 
-    # Get weather data for both cities
-    weather_data1 = fetch_weather_data(lat1, lon1, days=days_to_predict)
-    weather_data2 = fetch_weather_data(lat2, lon2, days=days_to_predict)
+    # Get weather data for the city
+    weather_data = fetch_weather_data(lat, lon, days=days_to_predict)
 
-    # Train LSTM model for both cities
-    df1 = pd.DataFrame(weather_data1)
-    df2 = pd.DataFrame(weather_data2)
-    model1, scaler1 = create_lstm_model(df1['temp'].values)
-    model2, scaler2 = create_lstm_model(df2['temp'].values)
+    # Train LSTM model for the city
+    df = pd.DataFrame(weather_data)
+    model, scaler = create_lstm_model(df['temp'].values)
 
-    # Predict next 'n' days for both cities
-    future_preds1 = predict_with_lstm(model1, df1['temp'].values, scaler1, days=days_to_predict)
-    future_preds2 = predict_with_lstm(model2, df2['temp'].values, scaler2, days=days_to_predict)
+    # Predict next 'n' days for the city
+    future_preds = predict_with_lstm(model, df['temp'].values, scaler, days=days_to_predict)
 
     # Convert to Fahrenheit if needed
     if temp_unit == "Fahrenheit (°F)":
-        future_preds1 = future_preds1 * 9/5 + 32
-        future_preds2 = future_preds2 * 9/5 + 32
+        future_preds = future_preds * 9/5 + 32
 
-    # Display table of cities and their forecasted temperatures
+    # Display table of the city's forecasted temperatures
     forecast_table = pd.DataFrame({
-        "City": [city1] * days_to_predict + [city2] * days_to_predict,
-        "Date": np.concatenate([df1["date"].values, df2["date"].values]),
-        "Predicted Temperature": np.concatenate([future_preds1.flatten(), future_preds2.flatten()])
+        "City": [city] * days_to_predict,
+        "Date": df["date"].values[:days_to_predict],
+        "Predicted Temperature": future_preds.flatten()
     })
     st.subheader("📊 Forecasted Temperatures")
     st.table(forecast_table)
 
-    # Plot weather data for both cities
-    if st.button("🔄 Compare Weather Data"):
-        with st.spinner("Fetching weather data and training model..."):
+    # Plot weather data for the city
+    if st.button("🔄 Display Temperature Comparison"):
+        with st.spinner("Fetching data and training model..."):
             # Plot comparison graph
-            plot_temperature_comparison(df1, df2, city1, city2, df1['date'], future_preds1)
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.plot(df["date"], df["temp"], label=f"{city} - Actual", color="blue")
+            ax.plot(df["date"][:days_to_predict], future_preds.flatten(), label="Predicted Temp", color="red", linestyle="--")
+            ax.set_ylabel("Temperature (°C)")
+            ax.set_title(f"Temperature Forecast for {city}")
+            ax.legend()
+            st.pyplot(fig)
 
     # AI Summary for Today and Tomorrow
-    ai_data1 = fetch_ai_summary(lat1, lon1)
-    ai_data2 = fetch_ai_summary(lat2, lon2)
+    ai_data = fetch_ai_summary(lat, lon)
 
-    st.subheader(f"🧠 AI-Powered Weather Summary for {city1} and {city2}")
-    st.write(f"**{city1} Today**: {ai_data1['today']}")
-    st.write(f"**{city1} Tomorrow**: {ai_data1['tomorrow']}")
-    st.write(f"**{city2} Today**: {ai_data2['today']}")
-    st.write(f"**{city2} Tomorrow**: {ai_data2['tomorrow']}")
+    st.subheader(f"🧠 AI-Powered Weather Summary for {city}")
+    st.write(f"**{city} Today**: {ai_data['today']}")
+    st.write(f"**{city} Tomorrow**: {ai_data['tomorrow']}")
 
     # Display Weather Alerts
-    weather_data1_alerts = fetch_weather_data(lat1, lon1)
-    weather_data2_alerts = fetch_weather_data(lat2, lon2)
-    if 'alerts' in weather_data1_alerts:
-        st.subheader(f"⚠️ Weather Alerts for {city1}")
-        for alert in weather_data1_alerts['alerts']:
-            st.warning(f"{alert['event']} in {alert['sender_name']}")
-
-    if 'alerts' in weather_data2_alerts:
-        st.subheader(f"⚠️ Weather Alerts for {city2}")
-        for alert in weather_data2_alerts['alerts']:
+    weather_data_alerts = fetch_weather_data(lat, lon)
+    if 'alerts' in weather_data_alerts:
+        st.subheader(f"⚠️ Weather Alerts for {city}")
+        for alert in weather_data_alerts['alerts']:
             st.warning(f"{alert['event']} in {alert['sender_name']}")
 else:
-    st.error("❌ One or both cities not found. Please check the city names and try again.")
+    st.error("❌ City not found. Please check the city name and try again.")
