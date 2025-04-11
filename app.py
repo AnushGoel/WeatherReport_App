@@ -46,6 +46,26 @@ def fetch_weather_data(lat, lon):
 
     return weather_records
 
+# Fetch AI-powered weather summary (for today and tomorrow)
+def fetch_ai_summary(lat, lon):
+    forecast_url = f"http://api.openweathermap.org/data/2.5/forecast"
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": API_KEY,
+        "units": "metric",
+        "cnt": 2  # Only get the first two forecasts (today and tomorrow)
+    }
+    response = requests.get(forecast_url, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        # Extract summary for today and tomorrow
+        today_summary = data['list'][0]['weather'][0]['description']
+        tomorrow_summary = data['list'][1]['weather'][0]['description']
+        return {"today": today_summary, "tomorrow": tomorrow_summary}
+    else:
+        return {"today": "Data unavailable", "tomorrow": "Data unavailable"}
+
 # Train ML model to predict next 7 days
 def train_model(df):
     df['day_of_year'] = pd.to_datetime(df['date']).dt.dayofyear
@@ -98,8 +118,8 @@ if city:
         # AI Summary (Today and Tomorrow)
         ai_data = fetch_ai_summary(lat, lon)
         st.subheader("🧠 AI-Powered Weather Summary")
-        st.write(f"**Today**: {ai_data['list'][0]['weather'][0]['description']}")
-        st.write(f"**Tomorrow**: {ai_data['list'][1]['weather'][0]['description']}")
+        st.write(f"**Today**: {ai_data['today']}")
+        st.write(f"**Tomorrow**: {ai_data['tomorrow']}")
         
         # Alerts (if any)
         if 'alerts' in weather_data:
