@@ -15,7 +15,7 @@ from tensorflow.keras.layers import LSTM, Dense
 from xgboost import XGBRegressor
 
 # ---------- CONFIG ----------
-API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
+API_KEY = "YOUR_API_KEY_HERE"  # Replace with your OpenWeather API Key
 GEO_URL = "http://api.openweathermap.org/geo/1.0/direct"
 ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 
@@ -129,8 +129,8 @@ def predict_with_model(model, data, scaler, days=7, window_size=5, is_lstm=False
     predictions = []
     for _ in range(days):
         prediction = model.predict(inputs)
-        predictions.append(prediction[0][0])
-        inputs = np.append(inputs[:, 1:, :], prediction.reshape(1, 1, 1), axis=1) if is_lstm else np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)
+        predictions.append(prediction[0])  # Corrected from prediction[0][0] to prediction[0]
+        inputs = np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)  # Update input for next prediction
 
     predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
     return predictions
