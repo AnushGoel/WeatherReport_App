@@ -38,17 +38,22 @@ def fetch_weather_data(lat, lon, days=7):
     response = requests.get(ONECALL_URL, params=params)
     data = response.json()
 
+    # Print the fetched data to verify the structure
+    st.write("Fetched Weather Data:", data)  # This will display the API response in the Streamlit app
+
     weather_records = []
     if 'daily' in data:
         for day in data['daily'][:days]:
-            weather_records.append({
-                "date": datetime.fromtimestamp(day["dt"]).date(),
-                "temp": day["temp"]["day"],
-                "humidity": day["humidity"],
-                "wind_speed": day["wind_speed"],
-                "pressure": day["pressure"],
-                "precipitation": day["pop"]
-            })
+            # Check if the 'temp' key exists in the response
+            if 'temp' in day:
+                weather_records.append({
+                    "date": datetime.fromtimestamp(day["dt"]).date(),
+                    "temp": day["temp"]["day"],  # Accessing the 'day' temperature
+                    "humidity": day["humidity"],
+                    "wind_speed": day["wind_speed"],
+                    "pressure": day["pressure"],
+                    "precipitation": day["pop"]
+                })
 
     return weather_records
 
