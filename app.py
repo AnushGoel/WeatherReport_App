@@ -7,14 +7,16 @@ import plotly.express as px
 from sklearn.ensemble import RandomForestRegressor
 import matplotlib.pyplot as plt
 from geopy.geocoders import Nominatim
+import numpy as np
 
 # ---------- CONFIG ----------
-API_KEY = "YOUR_API_KEY_HERE"  # Replace with your OpenWeather API Key
+API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
 GEO_URL = "http://api.openweathermap.org/geo/1.0/direct"
 ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 
 # ---------- HELPER FUNCTIONS ----------
 
+# Get city coordinates using Geopy
 def get_coordinates(city):
     geolocator = Nominatim(user_agent="weatherApp")
     location = geolocator.geocode(city)
@@ -22,6 +24,7 @@ def get_coordinates(city):
         return location.latitude, location.longitude
     return None, None
 
+# Fetch live weather and alerts
 def fetch_weather_data(lat, lon, days=7):
     params = {
         "lat": lat, "lon": lon, "appid": API_KEY,
@@ -30,7 +33,6 @@ def fetch_weather_data(lat, lon, days=7):
     response = requests.get(ONECALL_URL, params=params)
     data = response.json()
 
-    # Extract daily weather data
     weather_records = []
     if 'daily' in data:
         for day in data['daily'][:days]:
@@ -45,6 +47,7 @@ def fetch_weather_data(lat, lon, days=7):
 
     return weather_records
 
+# Fetch AI-powered weather summary (for today and tomorrow)
 def fetch_ai_summary(lat, lon):
     forecast_url = f"http://api.openweathermap.org/data/2.5/forecast"
     params = {
@@ -63,6 +66,7 @@ def fetch_ai_summary(lat, lon):
     else:
         return {"today": "Data unavailable", "tomorrow": "Data unavailable"}
 
+# Train the ML model to predict next 'n' days based on historical data
 def train_model(df):
     df['day_of_year'] = pd.to_datetime(df['date']).dt.dayofyear
     df['year'] = pd.to_datetime(df['date']).dt.year
@@ -72,6 +76,7 @@ def train_model(df):
     model.fit(X, y)
     return model
 
+# Predict next 'n' days
 def predict_next_days(model, days):
     today = datetime.now().date()
     future_dates = [today + timedelta(days=i) for i in range(1, days+1)]
@@ -82,8 +87,9 @@ def predict_next_days(model, days):
     preds = model.predict(df_future)
     return future_dates, preds
 
+# Plot a graph comparing actual and predicted temperatures for two cities
 def plot_temperature_comparison(df1, df2, city1, city2, future_dates, future_preds):
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(df1["date"], df1["temp"], label=f"{city1} - Actual", color="blue")
     ax.plot(df2["date"], df2["temp"], label=f"{city2} - Actual", color="green")
     ax.plot(future_dates, future_preds, label="Predicted Temp", color="red", linestyle="--")
@@ -92,32 +98,34 @@ def plot_temperature_comparison(df1, df2, city1, city2, future_dates, future_pre
     ax.legend()
     st.pyplot(fig)
 
-def plot_map():
-    map_data = px.data.gapminder()
+# Plot weather data on a map (interactive map)
+def plot_weather_map():
+    map_data = px.data.gapminder()  # Placeholder map data (can replace with city data later)
     fig = px.scatter_geo(map_data, locations="iso_alpha", hover_name="country", size="pop", projection="natural earth")
     fig.update_layout(title="Weather by Location")
     st.plotly_chart(fig)
 
 # ---------- STREAMLIT APP LAYOUT ----------
+
 st.set_page_config(page_title="Complex Weather App", layout="wide")
 st.title("🌍 Professional Weather Forecast with ML and Interactive Features")
 
-# User inputs
+# User input: Cities, number of days to predict
 city1 = st.text_input("Enter the first city name:", value="Toronto")
 city2 = st.text_input("Enter the second city name:", value="Vancouver")
 days_to_predict = st.slider("Select number of days to predict:", min_value=1, max_value=14, value=7)
 
-# ---------- World Map Display --------
-plot_map()
+# World map to display locations
+plot_weather_map()
 
-# Fetch coordinates for cities
+# Fetch coordinates for both cities
 lat1, lon1 = get_coordinates(city1)
 lat2, lon2 = get_coordinates(city2)
 
 if lat1 and lon1 and lat2 and lon2:
     st.success(f"📍 Found locations: {city1} (Lat: {lat1}, Lon: {lon1}), {city2} (Lat: {lat2}, Lon: {lon2})")
 
-    # Get weather data
+    # Get weather data for both cities
     weather_data1 = fetch_weather_data(lat1, lon1, days=days_to_predict)
     weather_data2 = fetch_weather_data(lat2, lon2, days=days_to_predict)
 
@@ -134,7 +142,7 @@ if lat1 and lon1 and lat2 and lon2:
             future_dates1, future_preds1 = predict_next_days(model1, days_to_predict)
             future_dates2, future_preds2 = predict_next_days(model2, days_to_predict)
 
-            # Plot comparison
+            # Plot comparison graph
             plot_temperature_comparison(df1, df2, city1, city2, future_dates1, future_preds1)
 
     # AI Summary for Today and Tomorrow
@@ -147,7 +155,7 @@ if lat1 and lon1 and lat2 and lon2:
     st.write(f"**{city2} Today**: {ai_data2['today']}")
     st.write(f"**{city2} Tomorrow**: {ai_data2['tomorrow']}")
 
-    # Alerts (if any)
+    # Display Weather Alerts
     weather_data1_alerts = fetch_weather_data(lat1, lon1)
     weather_data2_alerts = fetch_weather_data(lat2, lon2)
     if 'alerts' in weather_data1_alerts:
