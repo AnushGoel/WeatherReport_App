@@ -6,7 +6,6 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from geopy.geocoders import Nominatim
 from sklearn.preprocessing import MinMaxScaler
@@ -119,7 +118,7 @@ def predict_with_model(model, data, scaler, days=7, window_size=5):
     data = np.array(data)
     data_scaled = scaler.transform(data.reshape(-1, 1))
 
-    inputs = data_scaled[-window_size:].reshape(1, window_size, 1)
+    inputs = data_scaled[-window_size:].reshape(1, window_size, 1)  # Reshape for LSTM
     predictions = []
     for _ in range(days):
         prediction = model.predict(inputs)
@@ -129,18 +128,12 @@ def predict_with_model(model, data, scaler, days=7, window_size=5):
     predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
     return predictions
 
-# Plot weather data on an interactive map (for multiple cities)
-def plot_weather_map(cities, temps):
-    fig = px.scatter_geo(locations=cities, size=temps, hover_name=cities, projection="natural earth", color=temps, color_continuous_scale='Viridis')
-    fig.update_layout(title="Weather Data by City")
-    st.plotly_chart(fig)
-
 # ---------- STREAMLIT APP LAYOUT ----------
 
 st.set_page_config(page_title="Professional Weather App", layout="wide")
 st.title("🌍 Professional Weather Forecast with ML and Interactive Features")
 
-# User input: Cities, number of days to predict, temperature units
+# User input: City, number of days to predict, temperature units
 city = st.text_input("Enter the city name:", value="Toronto")
 days_to_predict = st.slider("Select number of days to predict:", min_value=1, max_value=14, value=7)
 temp_unit = st.radio("Select temperature unit:", ("Celsius (°C)", "Fahrenheit (°F)"))
