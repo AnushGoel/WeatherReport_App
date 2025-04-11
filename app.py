@@ -44,7 +44,7 @@ def fetch_weather_data(lat, lon, days=7):
     weather_records = []
     if 'daily' in data:
         for day in data['daily'][:days]:
-            # Check if the 'temp' key exists in the response
+            # Check if 'temp' exists and then access the 'day' temperature
             if 'temp' in day:
                 weather_records.append({
                     "date": datetime.fromtimestamp(day["dt"]).date(),
@@ -158,6 +158,9 @@ if lat and lon:
 
     # Get weather data for the city
     weather_data = fetch_weather_data(lat, lon, days=days_to_predict)
+
+    # Print DataFrame to check the columns
+    st.write("Weather Data DataFrame:", pd.DataFrame(weather_data))
 
     # Train models for the city
     df = pd.DataFrame(weather_data)
