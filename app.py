@@ -2,12 +2,17 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
+import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from geopy.geocoders import Nominatim
-import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM
 
 # ---------- CONFIG ----------
 API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
@@ -66,57 +71,54 @@ def fetch_ai_summary(lat, lon):
     else:
         return {"today": "Data unavailable", "tomorrow": "Data unavailable"}
 
-# Train the ML model to predict next 'n' days based on historical data
-def train_model(df):
-    df['day_of_year'] = pd.to_datetime(df['date']).dt.dayofyear
-    df['year'] = pd.to_datetime(df['date']).dt.year
-    X = df[['day_of_year', 'year']]
-    y = df['temp']
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X, y)
-    return model
+# Machine Learning: LSTM Model for Weather Prediction
+def create_lstm_model(data, window_size=5):
+    data = np.array(data)
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    data_scaled = scaler.fit_transform(data.reshape(-1, 1))
+    
+    X, y = [], []
+    for i in range(window_size, len(data_scaled)):
+        X.append(data_scaled[i-window_size:i, 0])
+        y.append(data_scaled[i, 0])
 
-# Predict next 'n' days
-def predict_next_days(model, days):
-    today = datetime.now().date()
-    future_dates = [today + timedelta(days=i) for i in range(1, days+1)]
-    df_future = pd.DataFrame({
-        "day_of_year": [d.timetuple().tm_yday for d in future_dates],
-        "year": [d.year for d in future_dates]
-    })
-    preds = model.predict(df_future)
-    return future_dates, preds
+    X, y = np.array(X), np.array(y)
+    X = X.reshape(X.shape[0], X.shape[1], 1)  # LSTM expects 3D input
 
-# Plot a graph comparing actual and predicted temperatures for two cities
-def plot_temperature_comparison(df1, df2, city1, city2, future_dates, future_preds):
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(df1["date"], df1["temp"], label=f"{city1} - Actual", color="blue")
-    ax.plot(df2["date"], df2["temp"], label=f"{city2} - Actual", color="green")
-    ax.plot(future_dates, future_preds, label="Predicted Temp", color="red", linestyle="--")
-    ax.set_ylabel("Temperature (°C)")
-    ax.set_title(f"Temperature Forecast Comparison: {city1} vs {city2}")
-    ax.legend()
-    st.pyplot(fig)
+    model = Sequential()
+    model.add(LSTM(units=50, return_sequences=True, input_shape=(X.shape[1], 1)))
+    model.add(LSTM(units=50, return_sequences=False))
+    model.add(Dense(units=1))
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.fit(X, y, epochs=10, batch_size=32)
 
-# Plot weather data on a map (interactive map)
-def plot_weather_map():
-    map_data = px.data.gapminder()  # Placeholder map data (can replace with city data later)
-    fig = px.scatter_geo(map_data, locations="iso_alpha", hover_name="country", size="pop", projection="natural earth")
-    fig.update_layout(title="Weather by Location")
-    st.plotly_chart(fig)
+    return model, scaler
+
+# Predict next 'n' days using LSTM model
+def predict_with_lstm(model, data, scaler, days=7, window_size=5):
+    data = np.array(data)
+    data_scaled = scaler.transform(data.reshape(-1, 1))
+
+    inputs = data_scaled[-window_size:].reshape(1, window_size, 1)
+    predictions = []
+    for _ in range(days):
+        prediction = model.predict(inputs)
+        predictions.append(prediction[0][0])
+        inputs = np.append(inputs[:, 1:, :], prediction.reshape(1, 1, 1), axis=1)
+
+    predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
+    return predictions
 
 # ---------- STREAMLIT APP LAYOUT ----------
 
-st.set_page_config(page_title="Complex Weather App", layout="wide")
+st.set_page_config(page_title="Professional Weather App", layout="wide")
 st.title("🌍 Professional Weather Forecast with ML and Interactive Features")
 
-# User input: Cities, number of days to predict
+# User input: Cities, number of days to predict, temperature units
 city1 = st.text_input("Enter the first city name:", value="Toronto")
 city2 = st.text_input("Enter the second city name:", value="Vancouver")
 days_to_predict = st.slider("Select number of days to predict:", min_value=1, max_value=14, value=7)
-
-# World map to display locations
-plot_weather_map()
+temp_unit = st.radio("Select temperature unit:", ("Celsius (°C)", "Fahrenheit (°F)"))
 
 # Fetch coordinates for both cities
 lat1, lon1 = get_coordinates(city1)
@@ -129,21 +131,35 @@ if lat1 and lon1 and lat2 and lon2:
     weather_data1 = fetch_weather_data(lat1, lon1, days=days_to_predict)
     weather_data2 = fetch_weather_data(lat2, lon2, days=days_to_predict)
 
+    # Train LSTM model for both cities
+    df1 = pd.DataFrame(weather_data1)
+    df2 = pd.DataFrame(weather_data2)
+    model1, scaler1 = create_lstm_model(df1['temp'].values)
+    model2, scaler2 = create_lstm_model(df2['temp'].values)
+
+    # Predict next 'n' days for both cities
+    future_preds1 = predict_with_lstm(model1, df1['temp'].values, scaler1, days=days_to_predict)
+    future_preds2 = predict_with_lstm(model2, df2['temp'].values, scaler2, days=days_to_predict)
+
+    # Convert to Fahrenheit if needed
+    if temp_unit == "Fahrenheit (°F)":
+        future_preds1 = future_preds1 * 9/5 + 32
+        future_preds2 = future_preds2 * 9/5 + 32
+
+    # Display table of cities and their forecasted temperatures
+    forecast_table = pd.DataFrame({
+        "City": [city1] * days_to_predict + [city2] * days_to_predict,
+        "Date": np.concatenate([df1["date"].values, df2["date"].values]),
+        "Predicted Temperature": np.concatenate([future_preds1.flatten(), future_preds2.flatten()])
+    })
+    st.subheader("📊 Forecasted Temperatures")
+    st.table(forecast_table)
+
     # Plot weather data for both cities
     if st.button("🔄 Compare Weather Data"):
         with st.spinner("Fetching weather data and training model..."):
-            # Train models for both cities
-            df1 = pd.DataFrame(weather_data1)
-            df2 = pd.DataFrame(weather_data2)
-            model1 = train_model(df1)
-            model2 = train_model(df2)
-
-            # Predict next days for both cities
-            future_dates1, future_preds1 = predict_next_days(model1, days_to_predict)
-            future_dates2, future_preds2 = predict_next_days(model2, days_to_predict)
-
             # Plot comparison graph
-            plot_temperature_comparison(df1, df2, city1, city2, future_dates1, future_preds1)
+            plot_temperature_comparison(df1, df2, city1, city2, df1['date'], future_preds1)
 
     # AI Summary for Today and Tomorrow
     ai_data1 = fetch_ai_summary(lat1, lon1)
