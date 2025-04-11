@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from geopy.geocoders import Nominatim
 
 # ---------- CONFIG ----------
-API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
+API_KEY = "YOUR_API_KEY_HERE"  # Replace with your OpenWeather API Key
 GEO_URL = "http://api.openweathermap.org/geo/1.0/direct"
 ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 
@@ -29,16 +29,22 @@ def fetch_weather_data(lat, lon):
         "units": "metric", "exclude": "minutely,hourly,alerts"
     }
     response = requests.get(ONECALL_URL, params=params)
-    return response.json()
+    data = response.json()
 
-# Fetch AI-powered weather summary (for today and tomorrow)
-def fetch_ai_summary(lat, lon):
-    summary_url = f"http://api.openweathermap.org/data/2.5/forecast"
-    params = {
-        "lat": lat, "lon": lon, "appid": API_KEY, "units": "metric", "cnt": 2
-    }
-    response = requests.get(summary_url, params=params)
-    return response.json()
+    # Extract data for each day's weather
+    weather_records = []
+    if 'daily' in data:
+        for day in data['daily']:
+            weather_records.append({
+                "date": datetime.fromtimestamp(day["dt"]).date(),
+                "temp": day["temp"]["day"],
+                "humidity": day["humidity"],
+                "wind_speed": day["wind_speed"],
+                "pressure": day["pressure"],
+                "precipitation": day["pop"]
+            })
+
+    return weather_records
 
 # Train ML model to predict next 7 days
 def train_model(df):
@@ -85,9 +91,9 @@ if city:
         # Live Weather Data
         st.subheader("📡 Current Weather")
         weather_data = fetch_weather_data(lat, lon)
-        st.metric("Temperature", f"{weather_data['current']['temp']}°C")
-        st.metric("Humidity", f"{weather_data['current']['humidity']}%")
-        st.metric("Wind Speed", f"{weather_data['current']['wind_speed']} m/s")
+        st.metric("Temperature", f"{weather_data[0]['temp']}°C")  # Assuming the first entry has today's data
+        st.metric("Humidity", f"{weather_data[0]['humidity']}%")
+        st.metric("Wind Speed", f"{weather_data[0]['wind_speed']} m/s")
         
         # AI Summary (Today and Tomorrow)
         ai_data = fetch_ai_summary(lat, lon)
@@ -104,7 +110,7 @@ if city:
         # Train ML model & plot predictions
         if st.button("🔄 Train ML Model & Predict Next 7 Days"):
             with st.spinner("Fetching data and training model..."):
-                df = pd.DataFrame(fetch_weather_data(lat, lon))  # Use the same data for training
+                df = pd.DataFrame(weather_data)  # Now the data is correctly structured for the DataFrame
                 model = train_model(df)
                 future_dates, future_preds = predict_next_7_days(model)
                 st.success("✅ Prediction Complete")
