@@ -18,13 +18,11 @@ def get_weather(lat, lon):
 
 st.title("🌤 Weather Forecast App")
 
-city = st.text_input("Enter city name", value="Toronto")
-
 if city:
     geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={city}&limit=1&appid={API_KEY}"
     geo_data = requests.get(geo_url).json()
 
-    if geo_data:
+    if geo_data and isinstance(geo_data, list) and len(geo_data) > 0:
         lat = geo_data[0]["lat"]
         lon = geo_data[0]["lon"]
         weather_data = get_weather(lat, lon)
@@ -36,4 +34,4 @@ if city:
             desc = day["weather"][0]["description"]
             st.write(f"**{dt}**: {temp}°C, {desc.capitalize()}")
     else:
-        st.error("City not found. Please try again.")
+        st.error("❌ Could not find location. Please check the city name and try again.")
