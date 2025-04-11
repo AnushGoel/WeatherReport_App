@@ -12,10 +12,10 @@ from geopy.geocoders import Nominatim
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import LSTM, Dense
 
 # ---------- CONFIG ----------
-API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
+API_KEY = 9c6f06d4d8af4a52e743d4cd5a39425c  # Replace with your OpenWeather API Key
 GEO_URL = "http://api.openweathermap.org/geo/1.0/direct"
 ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 
@@ -83,13 +83,17 @@ def create_lstm_model(data, window_size=5):
         y.append(data_scaled[i, 0])
 
     X, y = np.array(X), np.array(y)
-    X = X.reshape(X.shape[0], X.shape[1], 1)  # LSTM expects 3D input
+    X = X.reshape(X.shape[0], X.shape[1], 1)  # LSTM expects 3D input (samples, time steps, features)
 
     model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(X.shape[1], 1)))
-    model.add(LSTM(units=50, return_sequences=False))
-    model.add(Dense(units=1))
+    model.add(LSTM(units=50, return_sequences=True, input_shape=(X.shape[1], 1)))  # LSTM Layer 1
+    model.add(LSTM(units=50, return_sequences=False))  # LSTM Layer 2
+    model.add(Dense(units=1))  # Output layer (single unit for prediction)
+    
+    # Compile the model
     model.compile(optimizer='adam', loss='mean_squared_error')
+    
+    # Fit the model
     model.fit(X, y, epochs=10, batch_size=32)
 
     return model, scaler
