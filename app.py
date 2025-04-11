@@ -13,6 +13,7 @@ from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
+from xgboost import XGBRegressor
 
 # ---------- CONFIG ----------
 API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
@@ -71,7 +72,25 @@ def fetch_ai_summary(lat, lon):
     else:
         return {"today": "Data unavailable", "tomorrow": "Data unavailable"}
 
-# Machine Learning: LSTM Model for Weather Prediction
+# XGBoost model for weather prediction
+def create_xgboost_model(data, window_size=5):
+    data = np.array(data)
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    data_scaled = scaler.fit_transform(data.reshape(-1, 1))
+    
+    X, y = [], []
+    for i in range(window_size, len(data_scaled)):
+        X.append(data_scaled[i-window_size:i, 0])
+        y.append(data_scaled[i, 0])
+
+    X, y = np.array(X), np.array(y)
+    
+    model = XGBRegressor(n_estimators=100, random_state=42)
+    model.fit(X, y)
+
+    return model, scaler
+
+# LSTM model for weather prediction
 def create_lstm_model(data, window_size=5):
     data = np.array(data)
     scaler = MinMaxScaler(feature_range=(0, 1))
@@ -90,16 +109,13 @@ def create_lstm_model(data, window_size=5):
     model.add(LSTM(units=50, return_sequences=False))  # LSTM Layer 2
     model.add(Dense(units=1))  # Output layer (single unit for prediction)
     
-    # Compile the model
     model.compile(optimizer='adam', loss='mean_squared_error')
-    
-    # Fit the model
     model.fit(X, y, epochs=10, batch_size=32)
 
     return model, scaler
 
-# Predict next 'n' days using LSTM model
-def predict_with_lstm(model, data, scaler, days=7, window_size=5):
+# Predict next 'n' days using ML model
+def predict_with_model(model, data, scaler, days=7, window_size=5):
     data = np.array(data)
     data_scaled = scaler.transform(data.reshape(-1, 1))
 
@@ -113,12 +129,18 @@ def predict_with_lstm(model, data, scaler, days=7, window_size=5):
     predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
     return predictions
 
+# Plot weather data on an interactive map (for multiple cities)
+def plot_weather_map(cities, temps):
+    fig = px.scatter_geo(locations=cities, size=temps, hover_name=cities, projection="natural earth", color=temps, color_continuous_scale='Viridis')
+    fig.update_layout(title="Weather Data by City")
+    st.plotly_chart(fig)
+
 # ---------- STREAMLIT APP LAYOUT ----------
 
 st.set_page_config(page_title="Professional Weather App", layout="wide")
 st.title("🌍 Professional Weather Forecast with ML and Interactive Features")
 
-# User input: City, number of days to predict, temperature units
+# User input: Cities, number of days to predict, temperature units
 city = st.text_input("Enter the city name:", value="Toronto")
 days_to_predict = st.slider("Select number of days to predict:", min_value=1, max_value=14, value=7)
 temp_unit = st.radio("Select temperature unit:", ("Celsius (°C)", "Fahrenheit (°F)"))
@@ -132,22 +154,26 @@ if lat and lon:
     # Get weather data for the city
     weather_data = fetch_weather_data(lat, lon, days=days_to_predict)
 
-    # Train LSTM model for the city
+    # Train models for the city
     df = pd.DataFrame(weather_data)
-    model, scaler = create_lstm_model(df['temp'].values)
+    model_lstm, scaler_lstm = create_lstm_model(df['temp'].values)
+    model_xgb, scaler_xgb = create_xgboost_model(df['temp'].values)
 
     # Predict next 'n' days for the city
-    future_preds = predict_with_lstm(model, df['temp'].values, scaler, days=days_to_predict)
+    future_preds_lstm = predict_with_model(model_lstm, df['temp'].values, scaler_lstm, days=days_to_predict)
+    future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict)
 
     # Convert to Fahrenheit if needed
     if temp_unit == "Fahrenheit (°F)":
-        future_preds = future_preds * 9/5 + 32
+        future_preds_lstm = future_preds_lstm * 9/5 + 32
+        future_preds_xgb = future_preds_xgb * 9/5 + 32
 
     # Display table of the city's forecasted temperatures
     forecast_table = pd.DataFrame({
         "City": [city] * days_to_predict,
         "Date": df["date"].values[:days_to_predict],
-        "Predicted Temperature": future_preds.flatten()
+        "LSTM Predicted Temperature": future_preds_lstm.flatten(),
+        "XGBoost Predicted Temperature": future_preds_xgb.flatten()
     })
     st.subheader("📊 Forecasted Temperatures")
     st.table(forecast_table)
@@ -155,10 +181,10 @@ if lat and lon:
     # Plot weather data for the city
     if st.button("🔄 Display Temperature Comparison"):
         with st.spinner("Fetching data and training model..."):
-            # Plot comparison graph
             fig, ax = plt.subplots(figsize=(12, 6))
             ax.plot(df["date"], df["temp"], label=f"{city} - Actual", color="blue")
-            ax.plot(df["date"][:days_to_predict], future_preds.flatten(), label="Predicted Temp", color="red", linestyle="--")
+            ax.plot(df["date"][:days_to_predict], future_preds_lstm.flatten(), label="LSTM Predicted Temp", color="red", linestyle="--")
+            ax.plot(df["date"][:days_to_predict], future_preds_xgb.flatten(), label="XGBoost Predicted Temp", color="green", linestyle="--")
             ax.set_ylabel("Temperature (°C)")
             ax.set_title(f"Temperature Forecast for {city}")
             ax.legend()
