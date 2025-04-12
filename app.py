@@ -9,9 +9,6 @@ from sklearn.ensemble import RandomForestRegressor
 import matplotlib.pyplot as plt
 from geopy.geocoders import Nominatim
 from sklearn.preprocessing import MinMaxScaler
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
 from xgboost import XGBRegressor
 
 # ---------- CONFIG ----------
@@ -41,19 +38,15 @@ def fetch_weather_data(lat, lon, days=7):
     weather_records = []
     if 'daily' in data:
         for day in data['daily'][:days]:
-            # Print the daily data to inspect structure
-            st.write("Day Data:", day)  # Print the daily data to see the structure
-            # Ensure 'temp' exists and then access the 'day' temperature
             if 'temp' in day:
                 weather_records.append({
                     "date": datetime.fromtimestamp(day["dt"]).date(),
                     "temp": day["temp"]["day"],  # Accessing the 'day' temperature
-                    "humidity": day.get("humidity", "Data unavailable"),  # Fallback if 'humidity' is missing
-                    "wind_speed": day.get("wind_speed", "Data unavailable"),  # Fallback if 'wind_speed' is missing
-                    "pressure": day.get("pressure", "Data unavailable"),  # Fallback if 'pressure' is missing
-                    "precipitation": day.get("pop", "Data unavailable")  # Fallback if 'pop' is missing
+                    "humidity": day.get("humidity", "Data unavailable"),
+                    "wind_speed": day.get("wind_speed", "Data unavailable"),
+                    "pressure": day.get("pressure", "Data unavailable"),
+                    "precipitation": day.get("pop", "Data unavailable")
                 })
-
     return weather_records
 
 # Fetch AI-powered weather summary (for today and tomorrow)
@@ -75,7 +68,26 @@ def fetch_ai_summary(lat, lon):
     else:
         return {"today": "Data unavailable", "tomorrow": "Data unavailable"}
 
-# XGBoost model for weather prediction
+# Random Forest model for weather prediction
+def create_random_forest_model(data, window_size=5):
+    data = np.array(data)
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    data_scaled = scaler.fit_transform(data.reshape(-1, 1))
+    
+    X, y = [], []
+    for i in range(window_size, len(data_scaled)):
+        X.append(data_scaled[i-window_size:i, 0])
+        y.append(data_scaled[i, 0])
+
+    X, y = np.array(X), np.array(y)
+
+    # Fit a RandomForestRegressor model
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X, y)
+
+    return model, scaler
+
+# XGBoost model for weather prediction (if you prefer to keep XGBoost)
 def create_xgboost_model(data, window_size=5):
     data = np.array(data)
     scaler = MinMaxScaler(feature_range=(0, 1))
@@ -96,44 +108,20 @@ def create_xgboost_model(data, window_size=5):
 
     return model, scaler
 
-# LSTM model for weather prediction
-def create_lstm_model(data, window_size=5):
-    data = np.array(data)
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    data_scaled = scaler.fit_transform(data.reshape(-1, 1))
-    
-    X, y = [], []
-    for i in range(window_size, len(data_scaled)):
-        X.append(data_scaled[i-window_size:i, 0])
-        y.append(data_scaled[i, 0])
-
-    X, y = np.array(X), np.array(y)
-    X = X.reshape(X.shape[0], X.shape[1], 1)  # LSTM expects 3D input (samples, time steps, features)
-
-    model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(X.shape[1], 1)))  # LSTM Layer 1
-    model.add(LSTM(units=50, return_sequences=False))  # LSTM Layer 2
-    model.add(Dense(units=1))  # Output layer (single unit for prediction)
-    
-    model.compile(optimizer='adam', loss='mean_squared_error')
-    model.fit(X, y, epochs=10, batch_size=32)
-
-    return model, scaler
-
 # Predict next 'n' days using ML model
-def predict_with_model(model, data, scaler, days=7, window_size=5, is_lstm=False):
+def predict_with_model(model, data, scaler, days=7, window_size=5, is_xgboost=False):
     data = np.array(data)
     data_scaled = scaler.transform(data.reshape(-1, 1))
 
-    if is_lstm:
-        inputs = data_scaled[-window_size:].reshape(1, window_size, 1)  # Reshape for LSTM
-    else:
+    if is_xgboost:
         inputs = data_scaled[-window_size:].reshape(1, window_size)  # Reshape for XGBoost
+    else:
+        inputs = data_scaled[-window_size:].reshape(1, window_size)  # Reshape for RandomForest
 
     predictions = []
     for _ in range(days):
         prediction = model.predict(inputs)
-        predictions.append(prediction[0])  # Corrected from prediction[0][0] to prediction[0]
+        predictions.append(prediction[0])
         inputs = np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)  # Update input for next prediction
 
     predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
@@ -172,24 +160,27 @@ if lat and lon:
         if 'temp' not in df.columns:
             st.error("Error: 'temp' column is missing in the weather data.")
         else:
-            model_lstm, scaler_lstm = create_lstm_model(df['temp'].values)
-            model_xgb, scaler_xgb = create_xgboost_model(df['temp'].values)
+            # Use RandomForestRegressor model
+            model_rf, scaler_rf = create_random_forest_model(df['temp'].values)
 
-            # Predict next 'n' days for the city
-            future_preds_lstm = predict_with_model(model_lstm, df['temp'].values, scaler_lstm, days=days_to_predict, is_lstm=True)
-            future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict, is_lstm=False)
+            # Predict next 'n' days for the city using RandomForest
+            future_preds_rf = predict_with_model(model_rf, df['temp'].values, scaler_rf, days=days_to_predict)
+
+            # Optionally, use XGBoost if preferred:
+            # model_xgb, scaler_xgb = create_xgboost_model(df['temp'].values)
+            # future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict, is_xgboost=True)
 
             # Convert to Fahrenheit if needed
             if temp_unit == "Fahrenheit (°F)":
-                future_preds_lstm = future_preds_lstm * 9/5 + 32
-                future_preds_xgb = future_preds_xgb * 9/5 + 32
+                future_preds_rf = future_preds_rf * 9/5 + 32
+                # future_preds_xgb = future_preds_xgb * 9/5 + 32  # If using XGBoost model
 
             # Display table of the city's forecasted temperatures
             forecast_table = pd.DataFrame({
                 "City": [city] * days_to_predict,
                 "Date": df["date"].values[:days_to_predict],
-                "LSTM Predicted Temperature": future_preds_lstm.flatten(),
-                "XGBoost Predicted Temperature": future_preds_xgb.flatten()
+                "Random Forest Predicted Temperature": future_preds_rf.flatten(),
+                # "XGBoost Predicted Temperature": future_preds_xgb.flatten()  # If using XGBoost
             })
             st.subheader("📊 Forecasted Temperatures")
             st.table(forecast_table)
@@ -199,8 +190,8 @@ if lat and lon:
                 with st.spinner("Fetching data and training model..."):
                     fig, ax = plt.subplots(figsize=(12, 6))
                     ax.plot(df["date"], df["temp"], label=f"{city} - Actual", color="blue")
-                    ax.plot(df["date"][:days_to_predict], future_preds_lstm.flatten(), label="LSTM Predicted Temp", color="red", linestyle="--")
-                    ax.plot(df["date"][:days_to_predict], future_preds_xgb.flatten(), label="XGBoost Predicted Temp", color="green", linestyle="--")
+                    ax.plot(df["date"][:days_to_predict], future_preds_rf.flatten(), label="Random Forest Predicted Temp", color="red", linestyle="--")
+                    # ax.plot(df["date"][:days_to_predict], future_preds_xgb.flatten(), label="XGBoost Predicted Temp", color="green", linestyle="--")  # If using XGBoost
                     ax.set_ylabel("Temperature (°C)")
                     ax.set_title(f"Temperature Forecast for {city}")
                     ax.legend()
