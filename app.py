@@ -12,7 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 from xgboost import XGBRegressor
 
 # ---------- CONFIG ----------
-API_KEY = "YOUR_API_KEY_HERE"  # Replace with your OpenWeather API Key
+API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
 ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 
 # ---------- HELPER FUNCTIONS ----------
