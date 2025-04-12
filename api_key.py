@@ -1,2 +1,1 @@
-# api_key.py
-API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"
+API_KEY = "8b4a676fbd67ed054cdef1d54eb19f84"
