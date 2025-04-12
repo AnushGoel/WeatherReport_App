@@ -64,6 +64,8 @@ def fetch_long_term_weather_data(lat, lon, date_str):
         return weather_record
     return None
 
+from datetime import datetime, timedelta  # Import timedelta
+
 # ---------- STREAMLIT APP LAYOUT ----------
 
 st.set_page_config(page_title="Historical Weather Data", layout="wide")
@@ -90,7 +92,7 @@ if city and timestamp:
 
         # Check if the date is within the last 5 days (for the timemachine endpoint)
         today = datetime.now()
-        if date_obj >= today - timedelta(days=5):
+        if date_obj >= today - timedelta(days=5):  # This will now work correctly
             weather_data = fetch_historical_weather_data(lat, lon, timestamp)
         else:
             # For older dates, use the long-term historical data fetch
