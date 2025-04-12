@@ -20,12 +20,27 @@ ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 # ---------- HELPER FUNCTIONS ----------
 
 # Get city coordinates using Geopy
+from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
+
+# Get city coordinates using Geopy
 def get_coordinates(city):
-    geolocator = Nominatim(user_agent="weatherApp")
-    location = geolocator.geocode(city)
-    if location:
-        return location.latitude, location.longitude
-    return None, None
+    try:
+        geolocator = Nominatim(user_agent="weatherApp")
+        location = geolocator.geocode(city)
+        if location:
+            return location.latitude, location.longitude
+        else:
+            st.error(f"❌ Unable to find coordinates for the city: {city}")
+            return None, None
+    except GeocoderUnavailable:
+        st.error("❌ Geocoding service is unavailable. Please try again later.")
+        return None, None
+    except GeocoderTimedOut:
+        st.error("❌ Geocoding service timed out. Please try again later.")
+        return None, None
+    except Exception as e:
+        st.error(f"❌ An unexpected error occurred: {e}")
+        return None, None
 
 # Fetch live weather data for the given city
 def fetch_weather_data(lat, lon, days=7):
