@@ -83,11 +83,17 @@ def train_models(df):
     return best_model
 
 # Predict future values using the trained model
-def predict_with_model(model, data, scaler, days=7, window_size=5):
-    data = np.array(data)
-    data_scaled = scaler.transform(data.reshape(-1, 1))  # Scale data to [0, 1]
+def predict_with_model(model, df, scaler, days=7, window_size=5):
+    # Prepare the inputs for prediction
+    X = df[['humidity', 'wind_speed', 'pressure', 'precipitation']].values
+    y = df['temp'].values
 
-    inputs = data_scaled[-window_size:].reshape(1, -1)  # Reshape for model: 1 row, window_size columns
+    # Scale the data
+    X_scaled = scaler.fit_transform(X)
+    y_scaled = scaler.fit_transform(y.reshape(-1, 1))
+
+    # Prepare inputs for prediction (using window_size)
+    inputs = X_scaled[-window_size:].reshape(1, -1)  # Reshape for model: 1 row, window_size columns
 
     predictions = []
     for _ in range(days):
@@ -129,10 +135,9 @@ if lat and lon:
 
         # Scale the data
         scaler = MinMaxScaler(feature_range=(0, 1))
-        df_scaled = scaler.fit_transform(df[['temp']].values)
 
         # Predict future temperatures using the best model
-        future_preds = predict_with_model(best_model, df['temp'].values, scaler, days=days_to_predict)
+        future_preds = predict_with_model(best_model, df, scaler, days=days_to_predict)
 
         # Convert to Fahrenheit if needed
         if temp_unit == "Fahrenheit (°F)":
