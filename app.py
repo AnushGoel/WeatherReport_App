@@ -5,6 +5,16 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 import numpy as np
 from api_key import API_KEY  # Import the API key
+from geopy.geocoders import Nominatim  # Geopy for converting city name to latitude and longitude
+
+# Function to get coordinates of a city using Geopy
+def get_coordinates(city_name):
+    geolocator = Nominatim(user_agent="weather_forecast_app")
+    location = geolocator.geocode(city_name)
+    if location:
+        return location.latitude, location.longitude
+    else:
+        return None, None
 
 # Function to get weather data from OpenWeather One Call API
 def get_weather_data(api_key, lat, lon, forecast_type="daily", units="metric", days=60):
@@ -24,6 +34,12 @@ def get_weather_data(api_key, lat, lon, forecast_type="daily", units="metric", d
     
     response = requests.get(base_url, params=params)
     data = response.json()
+    
+    # Check if the response contains the "daily" or "hourly" key
+    if "daily" not in data:
+        st.error(f"Error fetching daily weather data. Response: {data}")
+        return None
+    
     return data
 
 # Function to process historical data for the last 15 years
@@ -65,9 +81,14 @@ def predict_weather(data, days=60):
 def main():
     st.title("Weather Forecast and Prediction App")
     
-    # User inputs for location (latitude, longitude)
-    lat = st.sidebar.number_input("Enter Latitude", -90.0, 90.0, 37.7749)
-    lon = st.sidebar.number_input("Enter Longitude", -180.0, 180.0, -122.4194)
+    # User inputs for city name
+    city_name = st.sidebar.text_input("Enter City Name", "San Francisco")
+    
+    # Get coordinates from city name
+    lat, lon = get_coordinates(city_name)
+    if lat is None or lon is None:
+        st.error(f"Could not find coordinates for the city '{city_name}'. Please enter a valid city.")
+        return
     
     # User input for temperature unit (Celsius or Fahrenheit)
     units = st.sidebar.selectbox("Select Temperature Units", ["metric", "imperial"])
@@ -82,50 +103,51 @@ def main():
     # Get forecast data
     weather_data = get_weather_data(API_KEY, lat, lon, forecast_type, units, days)
     
-    if forecast_type == "daily":
-        # Show Daily Data
-        st.subheader(f"Daily Forecast for the next {days} Days")
-        daily_data = weather_data["daily"]
-        df_daily = pd.DataFrame(daily_data)
-        df_daily["date"] = pd.to_datetime(df_daily["dt"], unit="s")
-        st.write(df_daily)
+    if weather_data:
+        if forecast_type == "daily":
+            # Show Daily Data
+            st.subheader(f"Daily Forecast for the next {days} Days")
+            daily_data = weather_data["daily"]
+            df_daily = pd.DataFrame(daily_data)
+            df_daily["date"] = pd.to_datetime(df_daily["dt"], unit="s")
+            st.write(df_daily)
+            
+            # Graph for daily temperature forecast
+            st.subheader("Daily Temperature Forecast")
+            plt.plot(df_daily["date"], df_daily["temp"].apply(lambda x: x['day']))
+            plt.title("Daily Temperature Forecast")
+            plt.xlabel("Date")
+            plt.ylabel(f"Temperature ({units_label})")
+            st.pyplot()
+
+        elif forecast_type == "hourly":
+            # Show Hourly Data
+            st.subheader("Hourly Forecast for the next 48 Hours")
+            hourly_data = weather_data["hourly"]
+            df_hourly = pd.DataFrame(hourly_data)
+            df_hourly["date"] = pd.to_datetime(df_hourly["dt"], unit="s")
+            st.write(df_hourly)
+            
+            # Graph for hourly temperature forecast
+            st.subheader("Hourly Temperature Forecast")
+            plt.plot(df_hourly["date"], df_hourly["temp"])
+            plt.title("Hourly Temperature Forecast")
+            plt.xlabel("Hour")
+            plt.ylabel(f"Temperature ({units_label})")
+            st.pyplot()
+
+        # Predicting weather for the next 60 days
+        st.subheader("Weather Prediction for the Next 60 Days")
+        historical_data = get_historical_data(API_KEY, lat, lon, units)
+        prediction = predict_weather(historical_data, days=60)
         
-        # Graph for daily temperature forecast
-        st.subheader("Daily Temperature Forecast")
-        plt.plot(df_daily["date"], df_daily["temp"].apply(lambda x: x['day']))
-        plt.title("Daily Temperature Forecast")
-        plt.xlabel("Date")
+        # Plot Prediction
+        st.subheader("Predicted Temperature for the Next 60 Days")
+        plt.plot(range(60), prediction)
+        plt.title("Predicted Temperature (Next 60 Days)")
+        plt.xlabel("Day")
         plt.ylabel(f"Temperature ({units_label})")
         st.pyplot()
-
-    elif forecast_type == "hourly":
-        # Show Hourly Data
-        st.subheader("Hourly Forecast for the next 48 Hours")
-        hourly_data = weather_data["hourly"]
-        df_hourly = pd.DataFrame(hourly_data)
-        df_hourly["date"] = pd.to_datetime(df_hourly["dt"], unit="s")
-        st.write(df_hourly)
-        
-        # Graph for hourly temperature forecast
-        st.subheader("Hourly Temperature Forecast")
-        plt.plot(df_hourly["date"], df_hourly["temp"])
-        plt.title("Hourly Temperature Forecast")
-        plt.xlabel("Hour")
-        plt.ylabel(f"Temperature ({units_label})")
-        st.pyplot()
-
-    # Predicting weather for the next 60 days
-    st.subheader("Weather Prediction for the Next 60 Days")
-    historical_data = get_historical_data(API_KEY, lat, lon, units)
-    prediction = predict_weather(historical_data, days=60)
-    
-    # Plot Prediction
-    st.subheader("Predicted Temperature for the Next 60 Days")
-    plt.plot(range(60), prediction)
-    plt.title("Predicted Temperature (Next 60 Days)")
-    plt.xlabel("Day")
-    plt.ylabel(f"Temperature ({units_label})")
-    st.pyplot()
 
 if __name__ == "__main__":
     main()
