@@ -84,19 +84,21 @@ def train_models(df):
     return best_model
 
 # Predict future values
+# Predict future values using ML model
 def predict_with_model(model, data, scaler, days=7, window_size=5):
     data = np.array(data)
-    data_scaled = scaler.transform(data.reshape(-1, 1))
+    data_scaled = scaler.transform(data.reshape(-1, 1))  # Scale the data
 
-    inputs = data_scaled[-window_size:].reshape(1, window_size)  # Reshape for model
+    # Ensure inputs are reshaped correctly (1 sample with window_size features)
+    inputs = data_scaled[-window_size:].reshape(1, -1)  # Correct reshaping for model input
 
     predictions = []
     for _ in range(days):
-        prediction = model.predict(inputs)
-        predictions.append(prediction[0])
+        prediction = model.predict(inputs)  # Make a prediction
+        predictions.append(prediction[0])  # Get the predicted value
         inputs = np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)  # Update input for next prediction
 
-    predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
+    predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))  # Rescale the predictions back
     return predictions
 
 # ---------- STREAMLIT APP LAYOUT ----------
