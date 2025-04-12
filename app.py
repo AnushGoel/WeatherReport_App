@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
@@ -12,8 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 from xgboost import XGBRegressor
 
 # ---------- CONFIG ----------
-API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
-GEO_URL = "http://api.openweathermap.org/geo/1.0/direct"
+API_KEY = "YOUR_API_KEY_HERE"  # Replace with your OpenWeather API Key
 ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 
 # ---------- HELPER FUNCTIONS ----------
@@ -26,7 +25,7 @@ def get_coordinates(city):
         return location.latitude, location.longitude
     return None, None
 
-# Fetch live weather and alerts
+# Fetch live weather data for the given city
 def fetch_weather_data(lat, lon, days=7):
     params = {
         "lat": lat, "lon": lon, "appid": API_KEY,
@@ -41,11 +40,11 @@ def fetch_weather_data(lat, lon, days=7):
             if 'temp' in day:
                 weather_records.append({
                     "date": datetime.fromtimestamp(day["dt"]).date(),
-                    "temp": day["temp"]["day"],  # Accessing the 'day' temperature
-                    "humidity": day.get("humidity", "Data unavailable"),
-                    "wind_speed": day.get("wind_speed", "Data unavailable"),
-                    "pressure": day.get("pressure", "Data unavailable"),
-                    "precipitation": day.get("pop", "Data unavailable")
+                    "temp": round(day["temp"]["day"], 2),  # Round temperature to 2 decimals
+                    "humidity": round(day.get("humidity", "Data unavailable"), 2),
+                    "wind_speed": round(day.get("wind_speed", "Data unavailable"), 2),
+                    "pressure": round(day.get("pressure", "Data unavailable"), 2),
+                    "precipitation": round(day.get("pop", "Data unavailable"), 2)
                 })
     return weather_records
 
@@ -81,13 +80,12 @@ def create_random_forest_model(data, window_size=5):
 
     X, y = np.array(X), np.array(y)
 
-    # Fit a RandomForestRegressor model
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X, y)
 
     return model, scaler
 
-# XGBoost model for weather prediction (if you prefer to keep XGBoost)
+# XGBoost model for weather prediction
 def create_xgboost_model(data, window_size=5):
     data = np.array(data)
     scaler = MinMaxScaler(feature_range=(0, 1))
@@ -100,7 +98,6 @@ def create_xgboost_model(data, window_size=5):
 
     X, y = np.array(X), np.array(y)
 
-    # Reshaping X to ensure it's a 2D array for XGBoost
     X = X.reshape(X.shape[0], X.shape[1])
 
     model = XGBRegressor(n_estimators=100, random_state=42)
@@ -113,10 +110,7 @@ def predict_with_model(model, data, scaler, days=7, window_size=5, is_xgboost=Fa
     data = np.array(data)
     data_scaled = scaler.transform(data.reshape(-1, 1))
 
-    if is_xgboost:
-        inputs = data_scaled[-window_size:].reshape(1, window_size)  # Reshape for XGBoost
-    else:
-        inputs = data_scaled[-window_size:].reshape(1, window_size)  # Reshape for RandomForest
+    inputs = data_scaled[-window_size:].reshape(1, window_size)  # Reshape for XGBoost/RandomForest
 
     predictions = []
     for _ in range(days):
@@ -151,51 +145,45 @@ if lat and lon:
         st.error("No weather data available for the selected city.")
     else:
         # Print the DataFrame to check the columns
-        st.write("Weather Data DataFrame:", pd.DataFrame(weather_data))
+        df = pd.DataFrame(weather_data)
+        st.write("Weather Data DataFrame:", df)
 
         # Train models for the city
-        df = pd.DataFrame(weather_data)
+        model_rf, scaler_rf = create_random_forest_model(df['temp'].values)
+        model_xgb, scaler_xgb = create_xgboost_model(df['temp'].values)
 
-        # Check if the 'temp' column exists
-        if 'temp' not in df.columns:
-            st.error("Error: 'temp' column is missing in the weather data.")
-        else:
-            # Use RandomForestRegressor model
-            model_rf, scaler_rf = create_random_forest_model(df['temp'].values)
+        # Predict next 'n' days for the city using RandomForest
+        future_preds_rf = predict_with_model(model_rf, df['temp'].values, scaler_rf, days=days_to_predict)
 
-            # Predict next 'n' days for the city using RandomForest
-            future_preds_rf = predict_with_model(model_rf, df['temp'].values, scaler_rf, days=days_to_predict)
+        # Optionally, use XGBoost if preferred:
+        future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict, is_xgboost=True)
 
-            # Optionally, use XGBoost if preferred:
-            # model_xgb, scaler_xgb = create_xgboost_model(df['temp'].values)
-            # future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict, is_xgboost=True)
+        # Convert to Fahrenheit if needed
+        if temp_unit == "Fahrenheit (°F)":
+            future_preds_rf = future_preds_rf * 9/5 + 32
+            future_preds_xgb = future_preds_xgb * 9/5 + 32
 
-            # Convert to Fahrenheit if needed
-            if temp_unit == "Fahrenheit (°F)":
-                future_preds_rf = future_preds_rf * 9/5 + 32
-                # future_preds_xgb = future_preds_xgb * 9/5 + 32  # If using XGBoost model
+        # Display table of the city's forecasted temperatures
+        forecast_table = pd.DataFrame({
+            "City": [city] * days_to_predict,
+            "Date": df["date"].values[:days_to_predict],
+            "Random Forest Predicted Temperature": [round(temp, 2) for temp in future_preds_rf.flatten()],
+            "XGBoost Predicted Temperature": [round(temp, 2) for temp in future_preds_xgb.flatten()]
+        })
+        st.subheader("📊 Forecasted Temperatures")
+        st.table(forecast_table)
 
-            # Display table of the city's forecasted temperatures
-            forecast_table = pd.DataFrame({
-                "City": [city] * days_to_predict,
-                "Date": df["date"].values[:days_to_predict],
-                "Random Forest Predicted Temperature": future_preds_rf.flatten(),
-                # "XGBoost Predicted Temperature": future_preds_xgb.flatten()  # If using XGBoost
-            })
-            st.subheader("📊 Forecasted Temperatures")
-            st.table(forecast_table)
-
-            # Plot weather data for the city
-            if st.button("🔄 Display Temperature Comparison"):
-                with st.spinner("Fetching data and training model..."):
-                    fig, ax = plt.subplots(figsize=(12, 6))
-                    ax.plot(df["date"], df["temp"], label=f"{city} - Actual", color="blue")
-                    ax.plot(df["date"][:days_to_predict], future_preds_rf.flatten(), label="Random Forest Predicted Temp", color="red", linestyle="--")
-                    # ax.plot(df["date"][:days_to_predict], future_preds_xgb.flatten(), label="XGBoost Predicted Temp", color="green", linestyle="--")  # If using XGBoost
-                    ax.set_ylabel("Temperature (°C)")
-                    ax.set_title(f"Temperature Forecast for {city}")
-                    ax.legend()
-                    st.pyplot(fig)
+        # Plot weather data for the city
+        if st.button("🔄 Display Temperature Comparison"):
+            with st.spinner("Fetching data and training model..."):
+                fig, ax = plt.subplots(figsize=(12, 6))
+                ax.plot(df["date"], df["temp"], label=f"{city} - Actual", color="blue")
+                ax.plot(df["date"][:days_to_predict], future_preds_rf.flatten(), label="Random Forest Predicted Temp", color="red", linestyle="--")
+                ax.plot(df["date"][:days_to_predict], future_preds_xgb.flatten(), label="XGBoost Predicted Temp", color="green", linestyle="--")
+                ax.set_ylabel("Temperature (°C)")
+                ax.set_title(f"Temperature Forecast for {city}")
+                ax.legend()
+                st.pyplot(fig)
 
             # AI Summary for Today and Tomorrow
             ai_data = fetch_ai_summary(lat, lon)
