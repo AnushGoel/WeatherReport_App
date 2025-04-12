@@ -15,7 +15,7 @@ from tensorflow.keras.layers import LSTM, Dense
 from xgboost import XGBRegressor
 
 # ---------- CONFIG ----------
-API_KEY = "Y9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
+API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
 GEO_URL = "http://api.openweathermap.org/geo/1.0/direct"
 ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 
@@ -41,7 +41,9 @@ def fetch_weather_data(lat, lon, days=7):
     weather_records = []
     if 'daily' in data:
         for day in data['daily'][:days]:
-            # Check if 'temp' exists and then access the 'day' temperature
+            # Print the daily data to inspect structure
+            st.write("Day Data:", day)  # Print the daily data to see the structure
+            # Ensure 'temp' exists and then access the 'day' temperature
             if 'temp' in day:
                 weather_records.append({
                     "date": datetime.fromtimestamp(day["dt"]).date(),
