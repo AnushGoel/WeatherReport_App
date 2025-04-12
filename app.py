@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from datetime import datetime
 import numpy as np
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
@@ -11,7 +11,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 import xgboost as xgb
 from geopy.geocoders import Nominatim
-import matplotlib.pyplot as plt
 
 # ---------- CONFIG ----------
 API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
@@ -83,21 +82,22 @@ def train_models(df):
     st.write(f"Best Model: {best_model.__class__.__name__} with MSE: {best_mse:.4f}")
     return best_model
 
-# Predict future values
+# Predict future values using the trained model
 def predict_with_model(model, data, scaler, days=7, window_size=5):
     data = np.array(data)
-    data_scaled = scaler.transform(data.reshape(-1, 1))  # Ensure data is scaled correctly
+    data_scaled = scaler.transform(data.reshape(-1, 1))  # Scale data to [0, 1]
 
-    inputs = data_scaled[-window_size:].reshape(1, -1)  # Reshape for the model (1 row, window_size columns)
+    inputs = data_scaled[-window_size:].reshape(1, -1)  # Reshape for model: 1 row, window_size columns
 
     predictions = []
     for _ in range(days):
-        prediction = model.predict(inputs)
+        prediction = model.predict(inputs)  # Predict future temperature
         predictions.append(prediction[0])
-        inputs = np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)  # Update inputs for next prediction
+        inputs = np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)  # Update input for next prediction
 
     predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
     return predictions
+
 # ---------- STREAMLIT APP LAYOUT ----------
 
 st.set_page_config(page_title="Advanced Weather Forecasting", layout="wide")
@@ -121,7 +121,7 @@ if lat and lon:
     if not weather_data:
         st.error("No weather data available for the selected city.")
     else:
-        # Prepare the data
+        # Prepare the data for training
         df = pd.DataFrame(weather_data)
 
         # Train multiple models and select the best one
@@ -157,13 +157,6 @@ if lat and lon:
                 ax.set_title(f"Temperature Forecast for {city}")
                 ax.legend()
                 st.pyplot(fig)
-
-            # AI Summary for Today and Tomorrow
-            ai_data = fetch_ai_summary(lat, lon)
-
-            st.subheader(f"🧠 AI-Powered Weather Summary for {city}")
-            st.write(f"**{city} Today**: {ai_data['today']}")
-            st.write(f"**{city} Tomorrow**: {ai_data['tomorrow']}")
 
 else:
     st.error("❌ City not found. Please check the city name and try again.")
