@@ -1,36 +1,19 @@
-import time
 import streamlit as st
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 import numpy as np
-from api_key import API_KEY  # Import the API key
-from geopy.geocoders import Nominatim  # Correct import for geocoder
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError  # Correct exception imports
+from api_key import API_KEY  # Import the OpenWeather API key
 
-# Function to get coordinates of a city using Geopy with retry mechanism
-def get_coordinates(city_name, retries=5, delay=2, max_delay=16):
-    geolocator = Nominatim(user_agent="weather_forecast_app")
-    
-    for attempt in range(retries):
-        try:
-            location = geolocator.geocode(city_name)
-            if location:
-                return location.latitude, location.longitude
-            else:
-                st.error(f"Could not find coordinates for the city '{city_name}'. Please enter a valid city.")
-                return None, None
-        except (GeocoderTimedOut, GeocoderServiceError) as e:
-            wait_time = min(delay * 2 ** attempt, max_delay)  # Exponential backoff
-            st.warning(f"Geocoding service unavailable. Retrying in {wait_time} seconds... (Attempt {attempt + 1} of {retries})")
-            time.sleep(wait_time)  # Wait before retrying
-        except Exception as e:
-            st.error(f"An error occurred while geocoding: {e}")
-            return None, None
-    
-    st.error("Unable to get coordinates after multiple retries. Please try again later.")
-    return None, None
+# Predefined cities and their coordinates in Canada
+cities = {
+    "Toronto": {"lat": 43.7, "lon": -79.42},
+    "Vancouver": {"lat": 49.28, "lon": -123.12},
+    "Montreal": {"lat": 45.50, "lon": -73.58},
+    "Calgary": {"lat": 51.05, "lon": -114.07},
+    "Ottawa": {"lat": 45.42, "lon": -75.70}
+}
 
 # Function to get weather data from OpenWeather One Call API
 def get_weather_data(api_key, lat, lon, forecast_type="daily", units="metric", days=60):
@@ -62,13 +45,9 @@ def get_weather_data(api_key, lat, lon, forecast_type="daily", units="metric", d
 def main():
     st.title("Weather Forecast and Prediction App")
     
-    # User inputs for city name
-    city_name = st.sidebar.text_input("Enter City Name", "San Francisco")
-    
-    # Get coordinates from city name
-    lat, lon = get_coordinates(city_name)
-    if lat is None or lon is None:
-        return  # Stop execution if coordinates are not available
+    # User input for selecting a city from the predefined list
+    city_name = st.sidebar.selectbox("Select City", list(cities.keys()))
+    lat, lon = cities[city_name]["lat"], cities[city_name]["lon"]
     
     # User input for temperature unit (Celsius or Fahrenheit)
     units = st.sidebar.selectbox("Select Temperature Units", ["metric", "imperial"])
@@ -115,19 +94,6 @@ def main():
             plt.xlabel("Hour")
             plt.ylabel(f"Temperature ({units_label})")
             st.pyplot()
-
-        # Predicting weather for the next 60 days
-        st.subheader("Weather Prediction for the Next 60 Days")
-        historical_data = get_historical_data(API_KEY, lat, lon, units)
-        prediction = predict_weather(historical_data, days=60)
-        
-        # Plot Prediction
-        st.subheader("Predicted Temperature for the Next 60 Days")
-        plt.plot(range(60), prediction)
-        plt.title("Predicted Temperature (Next 60 Days)")
-        plt.xlabel("Day")
-        plt.ylabel(f"Temperature ({units_label})")
-        st.pyplot()
 
 if __name__ == "__main__":
     main()
