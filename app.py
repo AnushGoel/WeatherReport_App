@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 import requests
 import pandas as pd
@@ -5,16 +6,29 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 import numpy as np
 from api_key import API_KEY  # Import the API key
-from geopy.geocoders import Nominatim  # Geopy for converting city name to latitude and longitude
+from geopy.geocoders import Nominatim, GeocoderTimedOut, GeocoderServiceError  # Import geocoding exceptions
 
-# Function to get coordinates of a city using Geopy
-def get_coordinates(city_name):
+# Function to get coordinates of a city using Geopy with retry mechanism
+def get_coordinates(city_name, retries=3, delay=5):
     geolocator = Nominatim(user_agent="weather_forecast_app")
-    location = geolocator.geocode(city_name)
-    if location:
-        return location.latitude, location.longitude
-    else:
-        return None, None
+    
+    for attempt in range(retries):
+        try:
+            location = geolocator.geocode(city_name)
+            if location:
+                return location.latitude, location.longitude
+            else:
+                st.error(f"Could not find coordinates for the city '{city_name}'. Please enter a valid city.")
+                return None, None
+        except (GeocoderTimedOut, GeocoderServiceError) as e:
+            st.warning(f"Geocoding service unavailable. Retrying... (Attempt {attempt + 1} of {retries})")
+            time.sleep(delay)  # Wait before retrying
+        except Exception as e:
+            st.error(f"An error occurred while geocoding: {e}")
+            return None, None
+    
+    st.error("Unable to get coordinates after multiple retries. Please try again later.")
+    return None, None
 
 # Function to get weather data from OpenWeather One Call API
 def get_weather_data(api_key, lat, lon, forecast_type="daily", units="metric", days=60):
@@ -87,8 +101,7 @@ def main():
     # Get coordinates from city name
     lat, lon = get_coordinates(city_name)
     if lat is None or lon is None:
-        st.error(f"Could not find coordinates for the city '{city_name}'. Please enter a valid city.")
-        return
+        return  # Stop execution if coordinates are not available
     
     # User input for temperature unit (Celsius or Fahrenheit)
     units = st.sidebar.selectbox("Select Temperature Units", ["metric", "imperial"])
