@@ -15,7 +15,7 @@ from tensorflow.keras.layers import LSTM, Dense
 from xgboost import XGBRegressor
 
 # ---------- CONFIG ----------
-API_KEY = "9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
+API_KEY = "Y9c6f06d4d8af4a52e743d4cd5a39425c"  # Replace with your OpenWeather API Key
 GEO_URL = "http://api.openweathermap.org/geo/1.0/direct"
 ONECALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 
@@ -39,12 +39,10 @@ def fetch_weather_data(lat, lon, days=7):
     data = response.json()
 
     weather_records = []
-
-    # Ensure 'daily' key exists in the response before accessing it
     if 'daily' in data:
         for day in data['daily'][:days]:
-            # Ensure 'temp' exists in the day data
-            if 'temp' in day and 'day' in day['temp']:
+            # Check if 'temp' exists and then access the 'day' temperature
+            if 'temp' in day:
                 weather_records.append({
                     "date": datetime.fromtimestamp(day["dt"]).date(),
                     "temp": day["temp"]["day"],  # Accessing the 'day' temperature
@@ -53,11 +51,6 @@ def fetch_weather_data(lat, lon, days=7):
                     "pressure": day.get("pressure", "Data unavailable"),  # Fallback if 'pressure' is missing
                     "precipitation": day.get("pop", "Data unavailable")  # Fallback if 'pop' is missing
                 })
-            else:
-                st.warning(f"Missing temperature data for date: {datetime.fromtimestamp(day['dt']).date()}")
-
-    else:
-        st.error("Error: Daily weather data is missing from the API response.")
 
     return weather_records
 
@@ -167,54 +160,62 @@ if lat and lon:
     if not weather_data:
         st.error("No weather data available for the selected city.")
     else:
+        # Print the DataFrame to check the columns
+        st.write("Weather Data DataFrame:", pd.DataFrame(weather_data))
+
         # Train models for the city
         df = pd.DataFrame(weather_data)
-        model_lstm, scaler_lstm = create_lstm_model(df['temp'].values)
-        model_xgb, scaler_xgb = create_xgboost_model(df['temp'].values)
 
-        # Predict next 'n' days for the city
-        future_preds_lstm = predict_with_model(model_lstm, df['temp'].values, scaler_lstm, days=days_to_predict, is_lstm=True)
-        future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict, is_lstm=False)
+        # Check if the 'temp' column exists
+        if 'temp' not in df.columns:
+            st.error("Error: 'temp' column is missing in the weather data.")
+        else:
+            model_lstm, scaler_lstm = create_lstm_model(df['temp'].values)
+            model_xgb, scaler_xgb = create_xgboost_model(df['temp'].values)
 
-        # Convert to Fahrenheit if needed
-        if temp_unit == "Fahrenheit (°F)":
-            future_preds_lstm = future_preds_lstm * 9/5 + 32
-            future_preds_xgb = future_preds_xgb * 9/5 + 32
+            # Predict next 'n' days for the city
+            future_preds_lstm = predict_with_model(model_lstm, df['temp'].values, scaler_lstm, days=days_to_predict, is_lstm=True)
+            future_preds_xgb = predict_with_model(model_xgb, df['temp'].values, scaler_xgb, days=days_to_predict, is_lstm=False)
 
-        # Display table of the city's forecasted temperatures
-        forecast_table = pd.DataFrame({
-            "City": [city] * days_to_predict,
-            "Date": df["date"].values[:days_to_predict],
-            "LSTM Predicted Temperature": future_preds_lstm.flatten(),
-            "XGBoost Predicted Temperature": future_preds_xgb.flatten()
-        })
-        st.subheader("📊 Forecasted Temperatures")
-        st.table(forecast_table)
+            # Convert to Fahrenheit if needed
+            if temp_unit == "Fahrenheit (°F)":
+                future_preds_lstm = future_preds_lstm * 9/5 + 32
+                future_preds_xgb = future_preds_xgb * 9/5 + 32
 
-        # Plot weather data for the city
-        if st.button("🔄 Display Temperature Comparison"):
-            with st.spinner("Fetching data and training model..."):
-                fig, ax = plt.subplots(figsize=(12, 6))
-                ax.plot(df["date"], df["temp"], label=f"{city} - Actual", color="blue")
-                ax.plot(df["date"][:days_to_predict], future_preds_lstm.flatten(), label="LSTM Predicted Temp", color="red", linestyle="--")
-                ax.plot(df["date"][:days_to_predict], future_preds_xgb.flatten(), label="XGBoost Predicted Temp", color="green", linestyle="--")
-                ax.set_ylabel("Temperature (°C)")
-                ax.set_title(f"Temperature Forecast for {city}")
-                ax.legend()
-                st.pyplot(fig)
+            # Display table of the city's forecasted temperatures
+            forecast_table = pd.DataFrame({
+                "City": [city] * days_to_predict,
+                "Date": df["date"].values[:days_to_predict],
+                "LSTM Predicted Temperature": future_preds_lstm.flatten(),
+                "XGBoost Predicted Temperature": future_preds_xgb.flatten()
+            })
+            st.subheader("📊 Forecasted Temperatures")
+            st.table(forecast_table)
 
-        # AI Summary for Today and Tomorrow
-        ai_data = fetch_ai_summary(lat, lon)
+            # Plot weather data for the city
+            if st.button("🔄 Display Temperature Comparison"):
+                with st.spinner("Fetching data and training model..."):
+                    fig, ax = plt.subplots(figsize=(12, 6))
+                    ax.plot(df["date"], df["temp"], label=f"{city} - Actual", color="blue")
+                    ax.plot(df["date"][:days_to_predict], future_preds_lstm.flatten(), label="LSTM Predicted Temp", color="red", linestyle="--")
+                    ax.plot(df["date"][:days_to_predict], future_preds_xgb.flatten(), label="XGBoost Predicted Temp", color="green", linestyle="--")
+                    ax.set_ylabel("Temperature (°C)")
+                    ax.set_title(f"Temperature Forecast for {city}")
+                    ax.legend()
+                    st.pyplot(fig)
 
-        st.subheader(f"🧠 AI-Powered Weather Summary for {city}")
-        st.write(f"**{city} Today**: {ai_data['today']}")
-        st.write(f"**{city} Tomorrow**: {ai_data['tomorrow']}")
+            # AI Summary for Today and Tomorrow
+            ai_data = fetch_ai_summary(lat, lon)
 
-        # Display Weather Alerts
-        weather_data_alerts = fetch_weather_data(lat, lon)
-        if 'alerts' in weather_data_alerts:
-            st.subheader(f"⚠️ Weather Alerts for {city}")
-            for alert in weather_data_alerts['alerts']:
-                st.warning(f"{alert['event']} in {alert['sender_name']}")
+            st.subheader(f"🧠 AI-Powered Weather Summary for {city}")
+            st.write(f"**{city} Today**: {ai_data['today']}")
+            st.write(f"**{city} Tomorrow**: {ai_data['tomorrow']}")
+
+            # Display Weather Alerts
+            weather_data_alerts = fetch_weather_data(lat, lon)
+            if 'alerts' in weather_data_alerts:
+                st.subheader(f"⚠️ Weather Alerts for {city}")
+                for alert in weather_data_alerts['alerts']:
+                    st.warning(f"{alert['event']} in {alert['sender_name']}")
 else:
     st.error("❌ City not found. Please check the city name and try again.")
