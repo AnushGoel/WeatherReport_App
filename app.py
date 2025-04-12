@@ -86,19 +86,18 @@ def train_models(df):
 # Predict future values
 def predict_with_model(model, data, scaler, days=7, window_size=5):
     data = np.array(data)
-    data_scaled = scaler.transform(data.reshape(-1, 1))
+    data_scaled = scaler.transform(data.reshape(-1, 1))  # Ensure data is scaled correctly
 
-    inputs = data_scaled[-window_size:].reshape(1, window_size)  # Reshape for model
+    inputs = data_scaled[-window_size:].reshape(1, -1)  # Reshape for the model (1 row, window_size columns)
 
     predictions = []
     for _ in range(days):
         prediction = model.predict(inputs)
         predictions.append(prediction[0])
-        inputs = np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)  # Update input for next prediction
+        inputs = np.append(inputs[:, 1:], prediction.reshape(1, 1), axis=1)  # Update inputs for next prediction
 
     predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
     return predictions
-
 # ---------- STREAMLIT APP LAYOUT ----------
 
 st.set_page_config(page_title="Advanced Weather Forecasting", layout="wide")
